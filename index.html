@@ -1,0 +1,2006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Dictionary Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/dist/vis-network.min.js"></script>
+  <style>
+    :root {
+      --bg-primary: #0a0a0b;
+      --bg-secondary: #111113;
+      --bg-tertiary: #18181b;
+      --bg-hover: #27272a;
+      --border: #27272a;
+      --border-subtle: #1f1f23;
+      --text-primary: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --accent-muted: rgba(99, 102, 241, 0.15);
+
+      /* Category Colors */
+      --clients: #3b82f6;
+      --clients-bg: rgba(59, 130, 246, 0.15);
+      --financial: #22c55e;
+      --financial-bg: rgba(34, 197, 94, 0.15);
+      --work: #f59e0b;
+      --work-bg: rgba(245, 158, 11, 0.15);
+      --people: #ec4899;
+      --people-bg: rgba(236, 72, 153, 0.15);
+      --documents: #8b5cf6;
+      --documents-bg: rgba(139, 92, 246, 0.15);
+      --automation: #06b6d4;
+      --automation-bg: rgba(6, 182, 212, 0.15);
+      --configuration: #64748b;
+      --configuration-bg: rgba(100, 116, 139, 0.15);
+      --security: #ef4444;
+      --security-bg: rgba(239, 68, 68, 0.15);
+
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --radius: 8px;
+      --radius-lg: 12px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* Layout */
+    .app {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+    }
+
+    .main {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Header */
+    .header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-secondary);
+    }
+
+    .logo {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo svg {
+      width: 24px;
+      height: 24px;
+      color: var(--accent);
+    }
+
+    .db-info {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .db-info span {
+      color: var(--text-secondary);
+    }
+
+    /* Search */
+    .search-container {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 10px 12px;
+      padding-left: 36px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-primary);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-muted);
+    }
+
+    .search-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .search-wrapper {
+      position: relative;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    /* Filters */
+    .filters {
+      padding: 12px 16px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--border);
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .filter-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: transparent;
+      border-radius: 20px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .filter-btn:hover {
+      border-color: var(--text-muted);
+    }
+
+    .filter-btn.active {
+      background: var(--accent-muted);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .filter-btn .count {
+      background: var(--bg-hover);
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 11px;
+    }
+
+    .filter-btn.active .count {
+      background: var(--accent);
+      color: white;
+    }
+
+    /* Table List */
+    .table-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .category-section {
+      margin-bottom: 16px;
+    }
+
+    .category-header {
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .category-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .category-dot.clients { background: var(--clients); }
+    .category-dot.financial { background: var(--financial); }
+    .category-dot.work { background: var(--work); }
+    .category-dot.people { background: var(--people); }
+    .category-dot.documents { background: var(--documents); }
+    .category-dot.automation { background: var(--automation); }
+    .category-dot.configuration { background: var(--configuration); }
+    .category-dot.security { background: var(--security); }
+
+    .table-item {
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .table-item:hover {
+      background: var(--bg-hover);
+    }
+
+    .table-item.active {
+      background: var(--accent-muted);
+    }
+
+    .table-item .name {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .table-item .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .badge.clients { background: var(--clients-bg); color: var(--clients); }
+    .badge.financial { background: var(--financial-bg); color: var(--financial); }
+    .badge.work { background: var(--work-bg); color: var(--work); }
+    .badge.people { background: var(--people-bg); color: var(--people); }
+    .badge.documents { background: var(--documents-bg); color: var(--documents); }
+    .badge.automation { background: var(--automation-bg); color: var(--automation); }
+    .badge.configuration { background: var(--configuration-bg); color: var(--configuration); }
+    .badge.security { background: var(--security-bg); color: var(--security); }
+
+    .table-item .col-count {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Main Content */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px;
+    }
+
+    /* Welcome / Drop Zone */
+    .welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 40px;
+      text-align: center;
+    }
+
+    .drop-zone {
+      width: 100%;
+      max-width: 500px;
+      padding: 60px 40px;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--bg-secondary);
+      transition: all 0.2s;
+    }
+
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-muted);
+    }
+
+    .drop-zone h2 {
+      font-size: 24px;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+
+    .drop-zone p {
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .file-input-label {
+      display: inline-block;
+      padding: 12px 24px;
+      background: var(--accent);
+      color: white;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+
+    .file-input-label:hover {
+      background: var(--accent-hover);
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    .or-divider {
+      margin: 24px 0;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .sample-btn {
+      padding: 10px 20px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.15s;
+    }
+
+    .sample-btn:hover {
+      border-color: var(--text-muted);
+      color: var(--text-primary);
+    }
+
+    /* Table Detail View */
+    .table-detail {
+      max-width: 1000px;
+    }
+
+    .table-header {
+      margin-bottom: 32px;
+    }
+
+    .table-title {
+      font-size: 32px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .table-name {
+      color: var(--text-primary);
+    }
+
+    .title-separator {
+      color: var(--text-muted);
+      font-size: 24px;
+      font-weight: 300;
+    }
+
+    .table-description {
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .table-context {
+      font-size: 14px;
+      color: var(--text-muted);
+      padding: 12px 16px;
+      background: var(--bg-secondary);
+      border-radius: var(--radius);
+      border-left: 3px solid var(--accent);
+    }
+
+    /* Stats Cards */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      padding: 16px;
+      background: var(--bg-secondary);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Relationships */
+    .relationships-section {
+      margin-bottom: 32px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title svg {
+      color: var(--accent);
+    }
+
+    .rel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .rel-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    .rel-card h4 {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .rel-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .rel-tag {
+      padding: 6px 12px;
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+      border: 1px solid transparent;
+    }
+
+    .rel-tag:hover {
+      background: var(--accent-muted);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .rel-empty {
+      color: var(--text-muted);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    /* Columns Table */
+    .columns-section {
+      margin-bottom: 32px;
+    }
+
+    .columns-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--bg-secondary);
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .columns-table th {
+      text-align: left;
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      background: var(--bg-tertiary);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .columns-table td {
+      padding: 12px 16px;
+      font-size: 14px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+    }
+
+    .columns-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .columns-table tr:hover td {
+      background: var(--bg-hover);
+    }
+
+    .col-name {
+      font-weight: 500;
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+      color: var(--text-primary);
+    }
+
+    .col-type {
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+      font-size: 13px;
+      color: var(--accent);
+    }
+
+    .col-nullable {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .col-nullable.yes {
+      background: var(--warning);
+      color: #000;
+    }
+
+    .col-nullable.no {
+      background: var(--text-muted);
+      color: var(--bg-primary);
+    }
+
+    .col-desc {
+      color: var(--text-secondary);
+      max-width: 400px;
+    }
+
+    .col-fk {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 2px 8px;
+      background: var(--accent-muted);
+      color: var(--accent);
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .col-fk:hover {
+      background: var(--accent);
+      color: white;
+    }
+
+    /* Diagram View */
+    .view-tabs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .view-tab {
+      padding: 8px 16px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+
+    .view-tab:hover {
+      border-color: var(--text-muted);
+    }
+
+    .view-tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    /* ERD View */
+    .erd-container {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      min-height: 600px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .erd-canvas {
+      width: 100%;
+      height: 600px;
+    }
+
+    .erd-controls {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .erd-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .erd-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    /* Loading */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-secondary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-hover);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--bg-secondary);
+      border-radius: var(--radius-lg);
+      width: 90vw;
+      height: 85vh;
+      max-width: 1400px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-header h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .modal-header svg {
+      color: var(--accent);
+    }
+
+    .modal-close {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      line-height: 1;
+    }
+
+    .modal-close:hover {
+      background: var(--bg-hover);
+      border-color: var(--text-muted);
+      color: var(--text-primary);
+    }
+
+    .modal-body {
+      flex: 1;
+      padding: 24px;
+      overflow: hidden;
+    }
+
+    #diagram-container {
+      width: 100%;
+      height: 100%;
+      border-radius: var(--radius);
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+    }
+
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .diagram-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      max-width: 60%;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      border: 2px solid;
+    }
+
+    .diagram-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .explore-btn {
+      padding: 10px 20px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .explore-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .explore-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: fixed;
+        left: -320px;
+        z-index: 100;
+        transition: left 0.3s;
+      }
+
+      .sidebar.open {
+        left: 0;
+      }
+
+      .rel-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .modal-content {
+        width: 95vw;
+        height: 90vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <aside class="sidebar">
+      <div class="header">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 7V4h16v3M9 20h6M12 4v16"/>
+          </svg>
+          <span>Data Dictionary</span>
+        </div>
+        <div class="db-info" id="db-info">
+          No data loaded
+        </div>
+      </div>
+      
+      <div class="search-container">
+        <div class="search-wrapper">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input type="text" class="search-input" id="search" placeholder="Search tables..." disabled>
+        </div>
+      </div>
+      
+      <div class="filters" id="filters">
+        <!-- Filter buttons will be generated dynamically -->
+      </div>
+      
+      <div class="table-list" id="table-list">
+        <div class="empty-state">Load a YAML file to begin</div>
+      </div>
+    </aside>
+    
+    <main class="main">
+      <div class="content" id="content">
+        <div class="welcome">
+          <div class="drop-zone" id="drop-zone">
+            <h2>📊 Data Dictionary Viewer</h2>
+            <p>Drag and drop a YAML data dictionary file here</p>
+            <label class="file-input-label">
+              Choose File
+              <input type="file" id="file-input" accept=".yaml,.yml">
+            </label>
+            <div class="or-divider">— or —</div>
+            <button class="sample-btn" id="load-bundled" style="display: none;">
+              Load Bundled Dictionary
+            </button>
+            <p style="margin-top: 16px; font-size: 13px; color: var(--text-muted);">
+              Supports YAML files with metadata, tables, and column definitions
+            </p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Diagram Modal -->
+  <div class="modal-overlay" id="diagram-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <circle cx="12" cy="5" r="2"/>
+            <circle cx="19" cy="12" r="2"/>
+            <circle cx="12" cy="19" r="2"/>
+            <circle cx="5" cy="12" r="2"/>
+            <line x1="12" y1="7" x2="12" y2="9"/>
+            <line x1="14.6" y1="10.5" x2="17" y2="12"/>
+            <line x1="14.6" y1="13.5" x2="17" y2="12"/>
+            <line x1="12" y1="15" x2="12" y2="17"/>
+            <line x1="9.4" y1="13.5" x2="7" y2="12"/>
+            <line x1="9.4" y1="10.5" x2="7" y2="12"/>
+          </svg>
+          Explore Data Dictionary
+        </h2>
+        <button class="modal-close" id="close-diagram">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="diagram-container"></div>
+      </div>
+      <div class="modal-footer">
+        <div class="diagram-legend" id="diagram-legend">
+          <!-- Legend will be populated dynamically -->
+        </div>
+        <div class="diagram-controls">
+          <button class="sample-btn" id="fit-diagram" style="display: inline-flex; align-items: center; gap: 8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+            Fit to View
+          </button>
+          <button class="sample-btn" onclick="closeDiagram()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let state = {
+      data: null,
+      tables: [],
+      relationships: {},
+      categories: [],
+      selectedTable: null,
+      selectedFilters: ['all'], // Array to support multi-select
+      search: '',
+      view: 'detail',
+      network: null
+    };
+
+    // DOM Elements
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+
+    // Initialize
+    function init() {
+      setupDropZone();
+      setupSearch();
+      setupFilters();
+      checkForBundledData();
+    }
+
+    // Check for bundled data
+    function checkForBundledData() {
+      // Try to load bundled data if available
+      if (typeof BUNDLED_DATA !== 'undefined') {
+        $('#load-bundled').style.display = 'inline-block';
+        $('#load-bundled').onclick = () => loadData(BUNDLED_DATA);
+      }
+    }
+
+    // Setup drop zone
+    function setupDropZone() {
+      const dropZone = $('#drop-zone');
+      const fileInput = $('#file-input');
+
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {
+        dropZone.addEventListener(event, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      });
+
+      ['dragenter', 'dragover'].forEach(event => {
+        dropZone.addEventListener(event, () => dropZone.classList.add('dragover'));
+      });
+
+      ['dragleave', 'drop'].forEach(event => {
+        dropZone.addEventListener(event, () => dropZone.classList.remove('dragover'));
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        const file = e.dataTransfer.files[0];
+        if (file) handleFile(file);
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) handleFile(file);
+      });
+    }
+
+    // Handle file
+    function handleFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const yaml = jsyaml.load(e.target.result);
+          loadData(yaml);
+        } catch (err) {
+          alert('Error parsing YAML: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // Load data
+    function loadData(yaml) {
+      // Handle different YAML structures
+      let data = yaml;
+      if (yaml.data_dictionary) {
+        data = yaml.data_dictionary;
+      }
+
+      state.data = data;
+      state.tables = processTablesData(data.tables || data);
+      state.relationships = buildRelationships(state.tables);
+
+      // Extract categories from metadata or discover from tables
+      if (data.metadata && data.metadata.categories) {
+        state.categories = data.metadata.categories;
+      } else {
+        // Fallback: discover unique categories from tables
+        const uniqueCategories = new Set();
+        state.tables.forEach(t => uniqueCategories.add(t.category));
+        state.categories = Array.from(uniqueCategories).sort();
+      }
+
+      updateUI();
+    }
+
+    // Process tables data
+    function processTablesData(tables) {
+      const result = [];
+
+      for (const [name, table] of Object.entries(tables)) {
+        if (!table || typeof table !== 'object') continue;
+
+        const columns = table.columns || [];
+        const fkColumns = columns.filter(c =>
+          c.description && c.description.toLowerCase().includes('fk to')
+        );
+
+        result.push({
+          name,
+          description: table.description || '',
+          businessContext: table.business_context || '',
+          columns: columns,
+          columnCount: columns.length,
+          fkCount: fkColumns.length,
+          fkTargets: fkColumns.map(c => extractFKTarget(c.description)).filter(Boolean),
+          category: table.category || 'Uncategorized' // Read from YAML
+        });
+      }
+
+      return result;
+    }
+
+    // Extract FK target from description
+    function extractFKTarget(desc) {
+      if (!desc) return null;
+      const match = desc.match(/fk\s+to\s+(\w+)/i);
+      return match ? match[1] : null;
+    }
+
+    // Build relationships
+    function buildRelationships(tables) {
+      const refs = {}; // tableName -> [tables that reference it]
+      const targets = {}; // tableName -> [tables it references]
+      
+      tables.forEach(table => {
+        targets[table.name] = table.fkTargets;
+        
+        table.fkTargets.forEach(target => {
+          if (!refs[target]) refs[target] = [];
+          if (!refs[target].includes(table.name)) {
+            refs[target].push(table.name);
+          }
+        });
+      });
+      
+      return { refs, targets };
+    }
+
+
+    // Update UI
+    function updateUI() {
+      const data = state.data;
+      const meta = data.metadata || {};
+
+      // Update DB info
+      $('#db-info').innerHTML = `
+        Database: <span>${meta.database || 'Unknown'}</span> ·
+        Schema: <span>${meta.schema || 'default'}</span> ·
+        <span>${state.tables.length} tables</span>
+      `;
+
+      // Enable search
+      $('#search').disabled = false;
+
+      // Calculate counts for each category
+      const counts = { all: state.tables.length };
+      state.categories.forEach(cat => counts[cat] = 0);
+      state.tables.forEach(t => {
+        if (counts[t.category] !== undefined) {
+          counts[t.category]++;
+        }
+      });
+
+      // Generate filter buttons dynamically
+      renderFilterButtons(counts);
+
+      renderTableList();
+
+      // Show first table or welcome
+      if (state.tables.length > 0 && !state.selectedTable) {
+        selectTable(state.tables[0].name);
+      }
+    }
+
+    // Setup search
+    function setupSearch() {
+      $('#search').addEventListener('input', (e) => {
+        state.search = e.target.value.toLowerCase();
+        renderTableList();
+      });
+    }
+
+    // Generate category color based on name
+    function getCategoryColor(category) {
+      const colorMap = {
+        'Clients': '#3b82f6',
+        'Contacts': '#60a5fa',
+        'AR Transactions': '#22c55e',
+        'Invoicing': '#10b981',
+        'Payments': '#14b8a6',
+        'Credits & Adjustments': '#06b6d4',
+        'Jobs': '#f59e0b',
+        'Tasks': '#f97316',
+        'Time & Expenses': '#fb923c',
+        'Deliverables': '#fdba74',
+        'Staff': '#ec4899',
+        'Skills': '#f472b6',
+        'Documents': '#8b5cf6',
+        'Files & DMS': '#a78bfa',
+        'Communications': '#c084fc',
+        'Automation': '#06b6d4',
+        'Workflows': '#22d3ee',
+        'Configuration': '#64748b',
+        'Organization': '#94a3b8',
+        'Reference Data': '#cbd5e1',
+        'Security': '#ef4444',
+        'Integrations': '#f87171',
+        'System': '#737373',
+        'Engagements': '#eab308',
+        'Client Requests': '#facc15',
+        'Billing Configuration': '#84cc16',
+        'AI & Enrichment': '#a855f7',
+        'Entity Management': '#d946ef',
+        'Audit & History': '#e11d48',
+        'Views': '#0ea5e9'
+      };
+
+      // Return mapped color or generate a default based on hash
+      if (colorMap[category]) return colorMap[category];
+
+      // Simple hash function for consistent colors
+      let hash = 0;
+      for (let i = 0; i < category.length; i++) {
+        hash = category.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const hue = Math.abs(hash) % 360;
+      return `hsl(${hue}, 65%, 55%)`;
+    }
+
+    // Render filter buttons dynamically
+    function renderFilterButtons(counts) {
+      const container = $('#filters');
+
+      let html = `
+        <button class="filter-btn ${state.selectedFilters.includes('all') ? 'active' : ''}" data-filter="all">
+          All <span class="count">${counts.all}</span>
+        </button>
+      `;
+
+      state.categories.forEach(category => {
+        const color = getCategoryColor(category);
+        const isActive = state.selectedFilters.includes(category);
+        html += `
+          <button class="filter-btn ${isActive ? 'active' : ''}" data-filter="${category}">
+            <span class="category-dot" style="background: ${color};"></span>
+            ${category} <span class="count">${counts[category] || 0}</span>
+          </button>
+        `;
+      });
+
+      container.innerHTML = html;
+
+      // Attach event listeners to new buttons
+      setupFilters();
+    }
+
+    // Setup filters with multi-select logic
+    function setupFilters() {
+      $$('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const filter = btn.dataset.filter;
+
+          if (filter === 'all') {
+            // Selecting "All" clears all other selections
+            state.selectedFilters = ['all'];
+          } else {
+            // Remove "all" if selecting a specific category
+            state.selectedFilters = state.selectedFilters.filter(f => f !== 'all');
+
+            // Toggle the clicked category
+            if (state.selectedFilters.includes(filter)) {
+              state.selectedFilters = state.selectedFilters.filter(f => f !== filter);
+            } else {
+              state.selectedFilters.push(filter);
+            }
+
+            // If no categories selected, default to "all"
+            if (state.selectedFilters.length === 0) {
+              state.selectedFilters = ['all'];
+            }
+          }
+
+          // Update button active states
+          $$('.filter-btn').forEach(b => {
+            const f = b.dataset.filter;
+            if (state.selectedFilters.includes(f)) {
+              b.classList.add('active');
+            } else {
+              b.classList.remove('active');
+            }
+          });
+
+          renderTableList();
+        });
+      });
+    }
+
+    // Render table list
+    function renderTableList() {
+      const container = $('#table-list');
+
+      let filtered = state.tables.filter(t => {
+        // Check if table's category is in selected filters (or if "all" is selected)
+        const categoryMatch = state.selectedFilters.includes('all') ||
+                             state.selectedFilters.includes(t.category);
+        if (!categoryMatch) return false;
+
+        // Check search filter
+        if (state.search && !t.name.toLowerCase().includes(state.search)) return false;
+
+        return true;
+      });
+      
+      // Sort: by category order from state.categories, then alphabetically within category
+      const categoryOrder = {};
+      state.categories.forEach((cat, index) => {
+        categoryOrder[cat] = index;
+      });
+
+      filtered.sort((a, b) => {
+        const orderA = categoryOrder[a.category] !== undefined ? categoryOrder[a.category] : 9999;
+        const orderB = categoryOrder[b.category] !== undefined ? categoryOrder[b.category] : 9999;
+        const catDiff = orderA - orderB;
+        if (catDiff !== 0) return catDiff;
+        return a.name.localeCompare(b.name);
+      });
+
+      // Group by category dynamically
+      const grouped = {};
+      state.categories.forEach(cat => grouped[cat] = []);
+      filtered.forEach(t => {
+        if (!grouped[t.category]) grouped[t.category] = [];
+        grouped[t.category].push(t);
+      });
+
+      let html = '';
+      
+      for (const [cat, tables] of Object.entries(grouped)) {
+        if (tables.length === 0) continue;
+
+        const color = getCategoryColor(cat);
+
+        html += `
+          <div class="category-section">
+            <div class="category-header">
+              <span class="category-dot" style="background: ${color};"></span>
+              ${cat} (${tables.length})
+            </div>
+            ${tables.map(t => `
+              <div class="table-item ${state.selectedTable === t.name ? 'active' : ''}"
+                   onclick="selectTable('${t.name}')">
+                <span class="name">${t.name}</span>
+                <span class="col-count">${t.columnCount} cols</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+      
+      container.innerHTML = html || '<div class="empty-state">No tables match your search</div>';
+    }
+
+    // Select table
+    function selectTable(name) {
+      state.selectedTable = name;
+      renderTableList();
+      renderTableDetail(name);
+    }
+    window.selectTable = selectTable;
+
+    // Render table detail
+    function renderTableDetail(name) {
+      const table = state.tables.find(t => t.name === name);
+      if (!table) return;
+      
+      const referencedBy = state.relationships.refs[name] || [];
+      const references = table.fkTargets;
+      
+      const content = $('#content');
+      content.innerHTML = `
+        <div class="table-detail">
+          <div class="view-tabs">
+            <button class="view-tab ${state.view === 'detail' ? 'active' : ''}" onclick="setView('detail')">
+              Details
+            </button>
+            <button class="view-tab ${state.view === 'erd' ? 'active' : ''}" onclick="setView('erd')">
+              Relationships
+            </button>
+            <button class="explore-btn" onclick="openDiagram()" style="margin-left: auto;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <circle cx="12" cy="5" r="2"/>
+                <circle cx="19" cy="12" r="2"/>
+                <circle cx="12" cy="19" r="2"/>
+                <circle cx="5" cy="12" r="2"/>
+                <line x1="12" y1="7" x2="12" y2="9"/>
+                <line x1="14.6" y1="10.5" x2="17" y2="12"/>
+                <line x1="14.6" y1="13.5" x2="17" y2="12"/>
+                <line x1="12" y1="15" x2="12" y2="17"/>
+                <line x1="9.4" y1="13.5" x2="7" y2="12"/>
+                <line x1="9.4" y1="10.5" x2="7" y2="12"/>
+              </svg>
+              Explore
+            </button>
+          </div>
+
+          ${state.view === 'detail' ? renderDetailView(table, referencedBy, references) : renderERDView(table, referencedBy, references)}
+        </div>
+      `;
+    }
+
+    // Set view
+    function setView(view) {
+      state.view = view;
+      if (state.selectedTable) {
+        renderTableDetail(state.selectedTable);
+      }
+    }
+    window.setView = setView;
+
+    // Render detail view
+    function renderDetailView(table, referencedBy, references) {
+      const categoryColor = getCategoryColor(table.category);
+      const badgeBg = categoryColor.startsWith('hsl')
+        ? categoryColor.replace('hsl', 'hsla').replace(')', ', 0.15)')
+        : categoryColor + '26'; // Add alpha in hex
+
+      return `
+        <div class="table-header">
+          <h1 class="table-title">
+            <span class="table-name">${table.name}</span>
+            <span class="title-separator">·</span>
+            <span class="badge" style="background: ${badgeBg}; color: ${categoryColor}; font-size: 14px; font-weight: 500;">${table.category}</span>
+          </h1>
+          ${table.description ? `<p class="table-description">${table.description}</p>` : ''}
+          ${table.businessContext ? `<div class="table-context">${table.businessContext}</div>` : ''}
+        </div>
+        
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-value">${table.columnCount}</div>
+            <div class="stat-label">Columns</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${table.fkCount}</div>
+            <div class="stat-label">Foreign Keys</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${referencedBy.length}</div>
+            <div class="stat-label">Referenced By</div>
+          </div>
+        </div>
+        
+        <div class="relationships-section">
+          <h2 class="section-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+            Relationships
+          </h2>
+          <div class="rel-grid">
+            <div class="rel-card">
+              <h4>→ References (${references.length})</h4>
+              <div class="rel-list">
+                ${references.length > 0 
+                  ? references.map(r => `<span class="rel-tag" onclick="selectTable('${r}')">${r}</span>`).join('')
+                  : '<span class="rel-empty">No outgoing references</span>'
+                }
+              </div>
+            </div>
+            <div class="rel-card">
+              <h4>← Referenced By (${referencedBy.length})</h4>
+              <div class="rel-list">
+                ${referencedBy.length > 0 
+                  ? referencedBy.map(r => `<span class="rel-tag" onclick="selectTable('${r}')">${r}</span>`).join('')
+                  : '<span class="rel-empty">No incoming references</span>'
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="columns-section">
+          <h2 class="section-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <line x1="3" y1="9" x2="21" y2="9"/>
+              <line x1="9" y1="21" x2="9" y2="9"/>
+            </svg>
+            Columns
+          </h2>
+          <table class="columns-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Null</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${table.columns.map(col => {
+                const fk = extractFKTarget(col.description);
+                return `
+                  <tr>
+                    <td class="col-name">${col.name}</td>
+                    <td class="col-type">${col.type}</td>
+                    <td><span class="col-nullable ${col.nullable ? 'yes' : 'no'}">${col.nullable ? 'YES' : 'NO'}</span></td>
+                    <td class="col-desc">
+                      ${col.description || '—'}
+                      ${fk ? `<br><span class="col-fk" onclick="selectTable('${fk}')">→ ${fk}</span>` : ''}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // Render ERD view
+    function renderERDView(table, referencedBy, references) {
+      setTimeout(() => drawERD(table, referencedBy, references), 0);
+
+      const categoryColor = getCategoryColor(table.category);
+      const badgeBg = categoryColor.startsWith('hsl')
+        ? categoryColor.replace('hsl', 'hsla').replace(')', ', 0.15)')
+        : categoryColor + '26';
+
+      return `
+        <div class="table-header">
+          <h1 class="table-title">
+            <span class="table-name">${table.name}</span>
+            <span class="title-separator">·</span>
+            <span class="badge" style="background: ${badgeBg}; color: ${categoryColor}; font-size: 14px; font-weight: 500;">${table.category}</span>
+          </h1>
+        </div>
+        
+        <div class="erd-container">
+          <canvas id="erd-canvas" class="erd-canvas"></canvas>
+          <div class="erd-controls">
+            <button class="erd-btn" onclick="zoomERD(1.2)" title="Zoom In">+</button>
+            <button class="erd-btn" onclick="zoomERD(0.8)" title="Zoom Out">−</button>
+            <button class="erd-btn" onclick="resetERD()" title="Reset">⟲</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Draw ERD
+    let erdScale = 1;
+    let erdOffset = { x: 0, y: 0 };
+    
+    function drawERD(table, referencedBy, references) {
+      const canvas = document.getElementById('erd-canvas');
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      
+      ctx.save();
+      ctx.translate(erdOffset.x, erdOffset.y);
+      ctx.scale(erdScale, erdScale);
+      
+      // Clear
+      ctx.fillStyle = '#111113';
+      ctx.fillRect(-10000, -10000, 20000, 20000);
+      
+      // Layout: center table with references on left, referenced-by on right
+      const boxWidth = 160;
+      const boxHeight = 40;
+      const hGap = 200;
+      const vGap = 60;
+      
+      // Draw center table
+      drawTableBox(ctx, centerX - boxWidth/2, centerY - boxHeight/2, boxWidth, boxHeight, table.name, table.category, true);
+      
+      // Draw references (left side)
+      const refY = centerY - ((references.length - 1) * vGap) / 2;
+      references.forEach((ref, i) => {
+        const y = refY + i * vGap;
+        const x = centerX - hGap - boxWidth/2;
+        const refTable = state.tables.find(t => t.name === ref);
+        drawTableBox(ctx, x, y - boxHeight/2, boxWidth, boxHeight, ref, refTable?.category || 'configuration', false);
+
+        // Draw arrow
+        drawArrow(ctx, centerX - boxWidth/2 - 10, centerY, x + boxWidth + 10, y, '#6366f1');
+      });
+
+      // Draw referenced-by (right side)
+      const refByY = centerY - ((referencedBy.length - 1) * vGap) / 2;
+      referencedBy.forEach((ref, i) => {
+        const y = refByY + i * vGap;
+        const x = centerX + hGap - boxWidth/2;
+        const refTable = state.tables.find(t => t.name === ref);
+        drawTableBox(ctx, x, y - boxHeight/2, boxWidth, boxHeight, ref, refTable?.category || 'configuration', false);
+        
+        // Draw arrow
+        drawArrow(ctx, x - 10, y, centerX + boxWidth/2 + 10, centerY, '#22c55e');
+      });
+      
+      // Legend
+      ctx.fillStyle = '#71717a';
+      ctx.font = '12px -apple-system, sans-serif';
+      ctx.fillText('← References this table', 20, 30);
+      ctx.fillStyle = '#6366f1';
+      ctx.fillText('●', 8, 30);
+      
+      ctx.fillStyle = '#71717a';
+      ctx.fillText('→ Referenced by', 20, 50);
+      ctx.fillStyle = '#22c55e';
+      ctx.fillText('●', 8, 50);
+      
+      ctx.restore();
+      
+      // Make boxes clickable
+      canvas.onclick = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left - erdOffset.x) / erdScale;
+        const y = (e.clientY - rect.top - erdOffset.y) / erdScale;
+        
+        // Check references
+        references.forEach((ref, i) => {
+          const boxY = refY + i * vGap;
+          const boxX = centerX - hGap - boxWidth/2;
+          if (x >= boxX && x <= boxX + boxWidth && y >= boxY - boxHeight/2 && y <= boxY + boxHeight/2) {
+            selectTable(ref);
+          }
+        });
+        
+        // Check referenced-by
+        referencedBy.forEach((ref, i) => {
+          const boxY = refByY + i * vGap;
+          const boxX = centerX + hGap - boxWidth/2;
+          if (x >= boxX && x <= boxX + boxWidth && y >= boxY - boxHeight/2 && y <= boxY + boxHeight/2) {
+            selectTable(ref);
+          }
+        });
+      };
+    }
+    
+    function drawTableBox(ctx, x, y, w, h, name, category, isCenter) {
+      // Helper to convert hex to rgba
+      function hexToRgba(hex, alpha = 0.15) {
+        if (hex.startsWith('hsl')) {
+          // For HSL colors, just use them directly with opacity
+          return hex.replace('hsl', 'hsla').replace(')', `, ${alpha})`);
+        }
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+
+      const borderColor = getCategoryColor(category);
+      const bgColor = hexToRgba(borderColor, 0.15);
+      const c = { bg: bgColor, border: borderColor };
+      
+      ctx.fillStyle = isCenter ? c.bg : '#18181b';
+      ctx.strokeStyle = isCenter ? c.border : '#27272a';
+      ctx.lineWidth = isCenter ? 2 : 1;
+      
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, 6);
+      ctx.fill();
+      ctx.stroke();
+      
+      ctx.fillStyle = '#fafafa';
+      ctx.font = `${isCenter ? '14' : '13'}px -apple-system, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      let displayName = name;
+      if (ctx.measureText(name).width > w - 20) {
+        while (ctx.measureText(displayName + '...').width > w - 20 && displayName.length > 0) {
+          displayName = displayName.slice(0, -1);
+        }
+        displayName += '...';
+      }
+      
+      ctx.fillText(displayName, x + w/2, y + h/2);
+    }
+    
+    function drawArrow(ctx, x1, y1, x2, y2, color) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      
+      // Curved line
+      const midX = (x1 + x2) / 2;
+      ctx.bezierCurveTo(midX, y1, midX, y2, x2, y2);
+      ctx.stroke();
+      
+      ctx.setLineDash([]);
+      
+      // Arrowhead
+      const angle = Math.atan2(y2 - y1, x2 - x1);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - 8 * Math.cos(angle - Math.PI/6), y2 - 8 * Math.sin(angle - Math.PI/6));
+      ctx.lineTo(x2 - 8 * Math.cos(angle + Math.PI/6), y2 - 8 * Math.sin(angle + Math.PI/6));
+      ctx.closePath();
+      ctx.fill();
+    }
+    
+    function zoomERD(factor) {
+      erdScale *= factor;
+      erdScale = Math.max(0.3, Math.min(3, erdScale));
+      if (state.selectedTable) {
+        const table = state.tables.find(t => t.name === state.selectedTable);
+        const referencedBy = state.relationships.refs[state.selectedTable] || [];
+        drawERD(table, referencedBy, table.fkTargets);
+      }
+    }
+    window.zoomERD = zoomERD;
+    
+    function resetERD() {
+      erdScale = 1;
+      erdOffset = { x: 0, y: 0 };
+      if (state.selectedTable) {
+        const table = state.tables.find(t => t.name === state.selectedTable);
+        const referencedBy = state.relationships.refs[state.selectedTable] || [];
+        drawERD(table, referencedBy, table.fkTargets);
+      }
+    }
+    window.resetERD = resetERD;
+
+    // Diagram Modal Functions
+    function openDiagram() {
+      const modal = document.getElementById('diagram-modal');
+      modal.classList.add('show');
+      // Destroy existing network if it exists
+      if (state.network) {
+        state.network.destroy();
+        state.network = null;
+      }
+      // Always reinitialize to pick up current filter
+      setTimeout(initDiagram, 100);
+    }
+    window.openDiagram = openDiagram;
+
+    function closeDiagram() {
+      const modal = document.getElementById('diagram-modal');
+      modal.classList.remove('show');
+    }
+    window.closeDiagram = closeDiagram;
+
+    function initDiagram() {
+      const container = document.getElementById('diagram-container');
+      if (!container) return;
+
+      // Filter tables based on current filter selection (multi-select)
+      let tablesToShow = state.tables;
+      if (!state.selectedFilters.includes('all')) {
+        tablesToShow = state.tables.filter(t => state.selectedFilters.includes(t.category));
+      }
+
+      // Create a set of visible table names for filtering edges
+      const visibleTableNames = new Set(tablesToShow.map(t => t.name));
+
+      // Collect unique categories for legend
+      const categoriesInDiagram = new Set();
+      tablesToShow.forEach(t => categoriesInDiagram.add(t.category));
+
+      // Helper to convert hex to rgba
+      function hexToRgba(hex, alpha = 0.2) {
+        if (hex.startsWith('hsl')) {
+          return hex.replace('hsl', 'hsla').replace(')', `, ${alpha})`);
+        }
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+
+      // Create nodes with category information
+      const nodes = new vis.DataSet(
+        tablesToShow.map(table => {
+          const borderColor = getCategoryColor(table.category);
+          const backgroundColor = hexToRgba(borderColor, 0.2);
+          const colors = { background: backgroundColor, border: borderColor };
+          return {
+            id: table.name,
+            label: table.name,
+            title: `<b>${table.name}</b><br/>Category: ${table.category}<br/>Columns: ${table.columnCount}`, // Tooltip
+            shape: 'box',
+            color: {
+              background: colors.background,
+              border: colors.border,
+              highlight: {
+                background: 'rgba(99, 102, 241, 0.3)',
+                border: '#6366f1'
+              },
+              hover: {
+                background: 'rgba(99, 102, 241, 0.2)',
+                border: colors.border
+              }
+            },
+            font: {
+              size: 14,
+              color: '#fafafa',
+              face: 'Monaco, Consolas, monospace',
+              bold: {
+                color: '#fafafa',
+                size: 14
+              }
+            },
+            margin: 12,
+            borderWidth: 3,
+            borderWidthSelected: 4
+          };
+        })
+      );
+
+      // Build edges from relationships (only between visible tables)
+      const edges = [];
+      let edgeId = 0;
+      tablesToShow.forEach(table => {
+        table.columns.forEach(col => {
+          const fkTarget = extractFKTarget(col.description);
+          // Only create edge if both source and target are visible
+          if (fkTarget && visibleTableNames.has(fkTarget)) {
+            edges.push({
+              id: edgeId++,
+              from: table.name,
+              to: fkTarget,
+              arrows: 'to',
+              color: {
+                color: '#6366f1',
+                highlight: '#818cf8',
+                hover: '#818cf8'
+              },
+              smooth: {
+                type: 'curvedCW',
+                roundness: 0.2
+              },
+              width: 1.5
+            });
+          }
+        });
+      });
+
+      const edgeDataSet = new vis.DataSet(edges);
+
+      // Options for the network
+      const options = {
+        layout: {
+          improvedLayout: true,
+          hierarchical: false
+        },
+        physics: {
+          enabled: true,
+          solver: 'forceAtlas2Based',
+          forceAtlas2Based: {
+            gravitationalConstant: -80,
+            centralGravity: 0.015,
+            springLength: 150,
+            springConstant: 0.05,
+            damping: 0.4,
+            avoidOverlap: 0.5
+          },
+          stabilization: {
+            iterations: 250,
+            updateInterval: 25
+          }
+        },
+        interaction: {
+          hover: true,
+          zoomView: true,
+          dragView: true,
+          tooltipDelay: 100,
+          navigationButtons: false
+        },
+        nodes: {
+          borderWidth: 3,
+          borderWidthSelected: 4,
+          shape: 'box',
+          shapeProperties: {
+            borderRadius: 6
+          },
+          chosen: {
+            node: function(values, id, selected, hovering) {
+              if (selected || hovering) {
+                values.borderWidth = 4;
+                values.shadow = true;
+                values.shadowSize = 10;
+                values.shadowX = 0;
+                values.shadowY = 0;
+                values.shadowColor = 'rgba(99, 102, 241, 0.3)';
+              }
+            }
+          }
+        }
+      };
+
+      // Create network
+      state.network = new vis.Network(container, { nodes, edges: edgeDataSet }, options);
+
+      // Populate legend
+      const legendContainer = document.getElementById('diagram-legend');
+      const sortedCategories = Array.from(categoriesInDiagram).sort();
+      legendContainer.innerHTML = sortedCategories.map(cat => {
+        const color = getCategoryColor(cat);
+        return `
+          <div class="legend-item">
+            <span class="legend-dot" style="background: ${hexToRgba(color, 0.3)}; border-color: ${color};"></span>
+            <span>${cat}</span>
+          </div>
+        `;
+      }).join('');
+
+      // Click handler - navigate to table
+      state.network.on('click', params => {
+        if (params.nodes.length > 0) {
+          const tableName = params.nodes[0];
+          closeDiagram();
+          selectTable(tableName);
+        }
+      });
+
+      // Double click to focus on a node and its connections
+      state.network.on('doubleClick', params => {
+        if (params.nodes.length > 0) {
+          state.network.focus(params.nodes[0], {
+            scale: 1.5,
+            animation: {
+              duration: 500,
+              easingFunction: 'easeInOutQuad'
+            }
+          });
+        }
+      });
+    }
+
+    function fitDiagram() {
+      if (state.network) {
+        state.network.fit({
+          animation: {
+            duration: 500,
+            easingFunction: 'easeInOutQuad'
+          }
+        });
+      }
+    }
+    window.fitDiagram = fitDiagram;
+
+    // Close modal on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeDiagram();
+      }
+    });
+
+    // Close modal on background click
+    document.getElementById('diagram-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'diagram-modal') {
+        closeDiagram();
+      }
+    });
+
+    // Close button
+    document.getElementById('close-diagram').addEventListener('click', closeDiagram);
+
+    // Fit button
+    document.getElementById('fit-diagram').addEventListener('click', fitDiagram);
+
+    // Start
+    init();
+  </script>
+</body>
+</html>

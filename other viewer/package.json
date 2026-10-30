@@ -1,0 +1,16 @@
+{
+  "name": "dictionary",
+  "version": "1.0.0",
+  "main": "generate-viewer.js",
+  "scripts": {
+    "generate": "node generate-viewer.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "yaml": "^2.8.2"
+  }
+}
